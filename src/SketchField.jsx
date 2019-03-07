@@ -28,6 +28,7 @@ class SketchField extends PureComponent {
     fillColor: PropTypes.string,
     // the background color of the sketch
     backgroundColor: PropTypes.string,
+    backgroundImage: PropTypes.string,
     // the opacity of the object
     opacity: PropTypes.number,
     // number of undo/redo steps to maintain
@@ -67,7 +68,7 @@ class SketchField extends PureComponent {
     opacity: 1.0,
     undoSteps: 25,
     tool: Tool.Pencil,
-    widthCorrection: 2,
+    widthCorrection: 0,
     heightCorrection: 0,
     forceValue: false
   };
@@ -264,8 +265,7 @@ class SketchField extends PureComponent {
     if (canvas.backgroundImage) {
       // Need to scale background images as well
       let bi = canvas.backgroundImage;
-      bi.width = bi.width * wfactor;
-      bi.height = bi.height * hfactor
+      bi.scaleToWidth(canvas.width);
     }
     let objects = canvas.getObjects();
     for (let i in objects) {
@@ -409,7 +409,38 @@ class SketchField extends PureComponent {
    *
    * @returns {String} URL containing a representation of the object in the format specified by options.format
    */
-  toDataURL = (options) => this._fc.toDataURL(options);
+  toDataURL = async (options) => {
+    const el = document.createElement("canvas"); 
+    const canvasCopy = new fabric.Canvas(el)
+    
+    canvasCopy.setDimensions(this._fc.backgroundImage.getOriginalSize())
+    await new Promise(res => canvasCopy.loadFromJSON(this._fc.toJSON(), res));
+    const wfactor = canvasCopy.width / this._fc.width
+    const hfactor = canvasCopy.height / this._fc.height
+    let bi = canvasCopy.backgroundImage;
+    if (bi) {
+      bi.scaleToWidth(bi.getOriginalSize().width);
+    }
+    const objects = canvasCopy.getObjects()
+    for (let i in objects) {
+      let obj = objects[i];
+      let scaleX = obj.scaleX;
+      let scaleY = obj.scaleY;
+      let left = obj.left;
+      let top = obj.top;
+      let tempScaleX = scaleX * wfactor;
+      let tempScaleY = scaleY * hfactor;
+      let tempLeft = left * wfactor;
+      let tempTop = top * hfactor;
+      obj.scaleX = tempScaleX;
+      obj.scaleY = tempScaleY;
+      obj.left = tempLeft;
+      obj.top = tempTop;
+      obj.setCoords()
+    }
+    canvasCopy.renderAll()
+    return canvasCopy.toDataURL(options);
+  }
 
   /**
    * Returns JSON representation of canvas
@@ -518,6 +549,7 @@ class SketchField extends PureComponent {
   setBackgroundFromDataUrl = (dataUrl, options = {}) => {
     let canvas = this._fc;
     let img = new Image();
+    if (options.crossOrigin) img.crossOrigin = options.crossOrigin
     const { stretched, stretchedX, stretchedY, ...fabricOptions } = options
     img.onload = () => {
       const imgObj = new fabric.Image(img);
@@ -550,14 +582,13 @@ class SketchField extends PureComponent {
       value,
       undoSteps,
       defaultValue,
-      backgroundColor
+      backgroundColor,
+      backgroundImage,
     } = this.props;
 
-    let canvas = this._fc = new fabric.Canvas(this._canvas/*, {
-         preserveObjectStacking: false,
-         renderOnAddRemove: false,
-         skipTargetFind: true
-         }*/);
+    let canvas = this._fc = new fabric.Canvas(this._canvas, {
+      enableRetinaScaling: true
+    });
 
     this._initTools(canvas);
 
@@ -567,9 +598,6 @@ class SketchField extends PureComponent {
     let selectedTool = this._tools[tool];
     selectedTool.configureCanvas(this.props);
     this._selectedTool = selectedTool;
-
-    // Control resize
-    window.addEventListener('resize', this._resize, false);
 
     // Initialize History, with maximum number of undo steps
     this._history = new History(undoSteps);
@@ -595,12 +623,17 @@ class SketchField extends PureComponent {
 
     this._resize();
 
+    if (backgroundImage) this.setBackgroundFromDataUrl(backgroundImage, { stretched: true,
+      originX: "left",
+      originY: "top",
+      crossOrigin: "Anonymous" 
+    });
+
     // initialize canvas with controlled value if exists
     (value || defaultValue) && this.fromJSON(value || defaultValue);
 
   };
 
-  componentWillUnmount = () => window.removeEventListener('resize', this._resize);
 
   componentDidUpdate = (prevProps, prevState) => {
     if (this.props.width !== prevProps.width
@@ -619,6 +652,14 @@ class SketchField extends PureComponent {
 
     if (this.props.backgroundColor !== prevProps.backgroundColor) {
       this._backgroundColor(this.props.backgroundColor)
+    }
+    
+    if (this.props.backgroundImage !== prevProps.backgroundImage) {
+      this.setBackgroundFromDataUrl(this.props.backgroundImage, { stretched: true,
+        originX: "left",
+        originY: "top",
+        crossOrigin: "Anonymous" 
+      });
     }
 
     if ((this.props.value !== prevProps.value) || (this.props.value && this.props.forceValue)) {
