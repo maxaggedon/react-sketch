@@ -619,6 +619,8 @@ class SketchField extends PureComponent {
     // canvas.on("text:editing:entered", console.log)
     // canvas.on("text:editing:exited", console.log)
 
+    document.addEventListener("keydown", this._handleKeyDown);
+
     this.disableTouchScroll();
 
     this._resize();
@@ -634,6 +636,18 @@ class SketchField extends PureComponent {
 
   };
 
+  componentWillUnmount() {
+    const canvas = this._fc
+    canvas.off();
+    document.removeEventListener("keydown", this._handleKeyDown);
+  }
+
+  _handleKeyDown = e => {
+    const activeObject = this._fc.getActiveObject()
+    if (activeObject && activeObject.get("type") === "i-text" && activeObject.isEditing) return;
+    if (["Backspace", "Delete"].includes(e.key))
+      this.removeSelected();
+  };
 
   componentDidUpdate = (prevProps, prevState) => {
     if (this.props.width !== prevProps.width
