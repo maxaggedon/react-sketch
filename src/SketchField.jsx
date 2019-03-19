@@ -572,8 +572,12 @@ class SketchField extends PureComponent {
       'left': options.left,
       'top': options.top
     });
+    iText.setColor(this.props.lineColor)
 
     canvas.add(iText);
+    canvas.setActiveObject(iText);
+    iText.enterEditing();
+    iText.selectAll();
   };
 
   componentDidMount = () => {
@@ -674,6 +678,19 @@ class SketchField extends PureComponent {
         originY: "top",
         crossOrigin: "Anonymous" 
       });
+    }
+    
+    if (this.props.lineColor !== prevProps.lineColor) {
+      const obj = this._fc.getActiveObject();
+      if (!obj) return;
+      switch (obj.get('type')) {
+        case "i-text":
+        obj.setColor(this.props.lineColor);
+        break;
+        default:
+        obj.set("stroke", this.props.lineColor);
+      }
+      this._fc.requestRenderAll()
     }
 
     if ((this.props.value !== prevProps.value) || (this.props.value && this.props.forceValue)) {
